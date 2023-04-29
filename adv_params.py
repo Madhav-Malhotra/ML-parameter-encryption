@@ -1,3 +1,18 @@
+"""ADVERSARIAL PARAMETER ENCRYPTION
+
+This script encrypts the parameters of an input Pytorch model.
+
+The following dependencies are required: `json`, `torch`, `random`, `pickle`,
+`argparse`, `numpy`, and  `datetime`.
+
+This file can also be imported as a module with these objects:
+
+    * EncryptionUtils - Class to encrypt model parameters.
+    * get_layer_set - Randomly selects model parameters for encryption.
+    * decrypt_parameters - Decrypts a model's parameters given a secret key.
+    * secret_formatter - Saves the secret key in a JSON/pickle format. 
+"""
+
 import json
 import torch 
 import random
@@ -5,7 +20,6 @@ import pickle
 import argparse
 import numpy as np
 from datetime import datetime
-from torchvision import transforms
 from torch.utils.data import TensorDataset, DataLoader
 
 
@@ -339,7 +353,7 @@ class EncryptionUtils:
 ############### DECRYPT KEY UTILS ################
 ##################################################
 
-def decrypt_parameters(model : torch.nn.Module, modifications : dict) -> None:
+def decrypt_parameters(model : torch.nn.Module, secret : dict) -> None:
     '''
     Decrypts parameters using secret key
     
@@ -347,7 +361,7 @@ def decrypt_parameters(model : torch.nn.Module, modifications : dict) -> None:
     --------------------
     model (type: torch.nn.Module)
     - The model containing parameters to decrypt
-    modifications (type: dict)
+    secret (type: dict)
     - An object recording the modifications made to parameters by layer.
     
     Returns
@@ -355,7 +369,7 @@ def decrypt_parameters(model : torch.nn.Module, modifications : dict) -> None:
     None
     '''
     
-    encrypted_layers = modifications.keys()
+    encrypted_layers = secret.keys()
     
     # Select model layer
     for name, param in model.named_parameters():
@@ -363,22 +377,22 @@ def decrypt_parameters(model : torch.nn.Module, modifications : dict) -> None:
             print(name)
             
             # Replace modified parameter
-            for index, value in modifications[name]:
+            for index, value in secret[name]:
                 with torch.no_grad():
                     param[index] = param[index] - value
 
 
-def modifications_formatter(
-    modifications : dict, 
+def secret_formatter(
+    secret : dict, 
     out_file : str, 
     format : str='pickle') -> None:
 
     '''
-    Converts modifications dictionary into a more convenient format
+    Converts secret dictionary into a more convenient format
 
     Parameters
     --------------------
-    modifications (type: dict)
+    secret (type: dict)
     - An object recording the modifications made to parameters by layer.
     format (type: string)
     - Valid values are: 'json' or 'pickle'
@@ -394,9 +408,9 @@ def modifications_formatter(
     
     with open(out_file, write_mode) as f:
         if (format == 'json'):
-            json.dump(modfications, f)
+            json.dump(secret, f)
         elif (format == 'pickle'):
-            pickle.dump(modifications, f)
+            pickle.dump(secret, f)
 
 
 ##################################################
@@ -405,9 +419,10 @@ def modifications_formatter(
 
 def main(args):
     # Set up data, model, and layers
-    encrypt_imgs, encrypt_labels = get_data(args.data, args.labels, args.device)
     model = get_model(args.model, args.device)
     encrypt_layers = get_layer_set(args.max_layers, model)
+    encrypt_imgs, encrypt_labels = get_data(args.data, args.labels, args.device,
+                                            not args.pt_data)
 
     # Init hyperparameters
     dataset = TensorDataset(encrypt_imgs, encrypt_labels)
@@ -420,34 +435,47 @@ def main(args):
     loss_threshold = loss.item() * 5
 
     # Run encryption
-    instance = EncryptionUtils(model, encrypt_data, encrypt_layers, args.max_weights, loss_threshold, args.step_size, args.boundary_distance, args.device)
-    modifications = instance.encrypt_parameters()
+    instance = EncryptionUtils(model, encrypt_data, encrypt_layers, args.max_params, 
+                               loss_threshold, args.step_size, 
+                               args.boundary_distance, args.device)
+    secret = instance.encrypt_parameters()
 
     x,y = next(iter(encrypt_data))
     with torch.no_grad():
         loss = torch.nn.functional.cross_entropy(model(x), y.long())
         print("Encrypted loss: ", loss)
     
-    # Save modifications and model
+    # Save secret and model
     torch.save(model, args.output_model)
-    modifications_formatter(modifications, args.output_key)
+    format = 'json' if args.json_key else 'pickle'
+    secret_formatter(secret, args.output_key, format)
+
 
 if __name__ == '__main__':
     # initialise argument parser
-    parser = argparse.ArgumentParser(description='PyTorch Example')
+    parser = argparse.ArgumentParser(description=__doc__)
+
     parser.add_argument('--disable-gpu', action='store_true', help='Disable GPU use')
+    parser.add_argument('--json-key', action='store_true', help='Save secret key as JSON')
+    parser.add_argument('--pt-data', action='store_true', 
+                        help="Pytorch dataset files instead of numpy")
 
-    parser.add_argument('--data', help='Filepath for encryption data')
-    parser.add_argument('--labels', help='Filepath for encryption labels')
-    parser.add_argument('--model', help='Filepath for pickled model to encrypt')
-    parser.add_argument('--output-model', help='Filepath for encrypted model')
-    parser.add_argument('--output-key', help='Filepath for decryption key')
+    parser.add_argument('--data', type=str, help='Filepath for encryption data')
+    parser.add_argument('--labels', type=str, help='Filepath for encryption labels')
+    parser.add_argument('--model', type=str, help='Filepath for pickled model to encrypt')
+    parser.add_argument('--output-model',  type=str, default="encrypted_model.pkl", 
+                        help='Filepath to save model after encryption')
+    parser.add_argument('--output-key', type=str, default="decryption_key.pkl", 
+                        help='Filepath to save secret key for decryption')
 
-    parser.add_argument('--max-layers', help='Maximum number of layers to encrypt')
-    parser.add_argument('--max-weights', help='Maximum number of weights to encrypt per layer')
-    parser.add_argument('--boundary-distance', help='0-1 decimal percent on how far from extremes encrypted parameter values should be')
-    parser.add_argument('--step-size', help='Step size per gradient-based update')
-    parser.add_argument('--max-weights', help='Maximum number of weights to encrypt per layer')
+    parser.add_argument('--max-layers', type=int, default=25,
+                        help='Maximum number of layers to encrypt')
+    parser.add_argument('--max-params', type=int, default=25,
+                        help='Maximum number of parameters to encrypt per layer')
+    parser.add_argument('--boundary-distance', type=float, default=0.1,
+                        help='0-0.5 decimal percent. 0 means encrypted parameter values can be anywhere in range of existing parameter values. 0.5 means encrypted parameter values can only be at the midpoint of the range of existing parameter values.')
+    parser.add_argument('--step-size', type=float, default=0.07,
+                        help='Step size per gradient-based update')
 
     # load arguments
     args = parser.parse_args()
