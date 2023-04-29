@@ -1,7 +1,3 @@
-##################################################
-########### LIBRARIES AND ARGUMENTS ##############
-##################################################
-
 import json
 import torch 
 import random
@@ -12,33 +8,6 @@ from datetime import datetime
 from torchvision import transforms
 from torch.utils.data import TensorDataset, DataLoader
 
-# initialise argument parser
-parser = argparse.ArgumentParser(description='PyTorch Example')
-parser.add_argument('--disable-gpu', action='store_true', help='Disable GPU use')
-
-parser.add_argument('--data', help='Filepath for encryption data')
-parser.add_argument('--labels', help='Filepath for encryption labels')
-parser.add_argument('--model', help='Filepath for pickled model to encrypt')
-parser.add_argument('--output-model', help='Filepath for encrypted model')
-parser.add_argument('--output-key', help='Filepath for decryption key')
-
-parser.add_argument('--max-layers', help='Maximum number of layers to encrypt')
-parser.add_argument('--max-weights', help='Maximum number of weights to encrypt per layer')
-parser.add_argument('--boundary-distance', help='0-1 decimal percent on how far from extremes encrypted parameter values should be')
-parser.add_argument('--step-size', help='Step size per gradient-based update')
-parser.add_argument('--max-weights', help='Maximum number of weights to encrypt per layer')
-
-
-
-# load arguments
-args = parser.parse_args()
-args.device = None
-
-if not args.disable_cuda and torch.cuda.is_available():
-    args.device = torch.device('cuda')
-else:
-    args.device = torch.device('cpu')
-
 
 
 
@@ -46,7 +15,7 @@ else:
 ################# DATA LOADING ###################
 ##################################################
 
-def get_data(data_path : str, label_path : str, numpy_load : bool=True) -> list:
+def get_data(data_path : str, label_path : str, device : torch.device, numpy_load : bool=True) -> list:
     '''
     Returns dataset for encryption (data, labels)
     
@@ -56,6 +25,8 @@ def get_data(data_path : str, label_path : str, numpy_load : bool=True) -> list:
     - A filepath to a numpy array or pytorch tensor with processed images.
     label_path (type: string)
     - A filepath to a numpy array or pytorch tensor with image labels.
+    device (type: torch.device)
+    - Where to store the data
     numpy_load (type: bool)
     - Whether to use numpy load (compared to pytorch load)
     
@@ -68,23 +39,23 @@ def get_data(data_path : str, label_path : str, numpy_load : bool=True) -> list:
     
     # Load saved tensors
     if numpy_load:
-        encrypt_imgs = torch.from_numpy(np.load(data_path)).to(args.device)
-        encrypt_labels = torch.from_numpy(np.load(label_path)).to(args.device)
+        encrypt_imgs = torch.from_numpy(np.load(data_path)).to(device)
+        encrypt_labels = torch.from_numpy(np.load(label_path)).to(device)
     else: 
-        encrypt_imgs = torch.load(data_path, map_location=args.device)
-        encrypt_labels = torch.load(label_path, map_location=args.device)
+        encrypt_imgs = torch.load(data_path, map_location=device)
+        encrypt_labels = torch.load(label_path, map_location=device)
         
     return encrypt_imgs, encrypt_labels
 
 
-def get_model(model_path : str) -> torch.nn.Module:
+def get_model(model_path : str, device : torch.device) -> torch.nn.Module:
     '''
     Load model, turn off redundant gradients, and move to selected device
     '''
 
     model = torch.load(model_path)
     model.train(False)
-    model.to(args.device)
+    model.to(device)
     return model
 
 
@@ -132,7 +103,8 @@ class EncryptionUtils:
         max_per_layer : int, 
         loss_threshold : float, 
         step_size : float, 
-        boundary_distance : float):
+        boundary_distance : float,
+        device : torch.device):
         
         self.model = model
         self.encrypt_data = encrypt_data
@@ -141,6 +113,7 @@ class EncryptionUtils:
         self.loss_threshold = loss_threshold
         self.step_size = step_size
         self.boundary_distance = boundary_distance
+        self.device = device
     
     def compute_bounds(self, layer_params):
         '''
@@ -328,7 +301,7 @@ class EncryptionUtils:
             
             # Generate mask to track which params in each layer are unusable
             modifications[name] = []
-            mask = torch.ones(param.shape, dtype=bool, device=args.device).detach()
+            mask = torch.ones(param.shape, dtype=bool, device=self.device).detach()
             bound_low, bound_high = self.compute_bounds(param)
 
             # Only run updates on current layer up to max iters
@@ -430,10 +403,10 @@ def modifications_formatter(
 ##################### MAIN #######################
 ##################################################
 
-def main():
+def main(args):
     # Set up data, model, and layers
-    encrypt_imgs, encrypt_labels = get_data(args.data, args.labels)
-    model = get_model(args.model)
+    encrypt_imgs, encrypt_labels = get_data(args.data, args.labels, args.device)
+    model = get_model(args.model, args.device)
     encrypt_layers = get_layer_set(args.max_layers, model)
 
     # Init hyperparameters
@@ -447,7 +420,7 @@ def main():
     loss_threshold = loss.item() * 5
 
     # Run encryption
-    instance = EncryptionUtils(model, encrypt_data, encrypt_layers, args.max_weights, loss_threshold, args.step_size, args.boundary_distance)
+    instance = EncryptionUtils(model, encrypt_data, encrypt_layers, args.max_weights, loss_threshold, args.step_size, args.boundary_distance, args.device)
     modifications = instance.encrypt_parameters()
 
     x,y = next(iter(encrypt_data))
@@ -460,4 +433,29 @@ def main():
     modifications_formatter(modifications, args.output_key)
 
 if __name__ == '__main__':
-    main()
+    # initialise argument parser
+    parser = argparse.ArgumentParser(description='PyTorch Example')
+    parser.add_argument('--disable-gpu', action='store_true', help='Disable GPU use')
+
+    parser.add_argument('--data', help='Filepath for encryption data')
+    parser.add_argument('--labels', help='Filepath for encryption labels')
+    parser.add_argument('--model', help='Filepath for pickled model to encrypt')
+    parser.add_argument('--output-model', help='Filepath for encrypted model')
+    parser.add_argument('--output-key', help='Filepath for decryption key')
+
+    parser.add_argument('--max-layers', help='Maximum number of layers to encrypt')
+    parser.add_argument('--max-weights', help='Maximum number of weights to encrypt per layer')
+    parser.add_argument('--boundary-distance', help='0-1 decimal percent on how far from extremes encrypted parameter values should be')
+    parser.add_argument('--step-size', help='Step size per gradient-based update')
+    parser.add_argument('--max-weights', help='Maximum number of weights to encrypt per layer')
+
+    # load arguments
+    args = parser.parse_args()
+    args.device = None
+
+    if not args.disable_cuda and torch.cuda.is_available():
+        args.device = torch.device('cuda')
+    else:
+        args.device = torch.device('cpu')
+    
+    main(args)
