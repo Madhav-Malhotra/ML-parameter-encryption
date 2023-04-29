@@ -458,3 +458,6 @@ def main():
     # Save modifications and model
     torch.save(model, args.output_model)
     modifications_formatter(modifications, args.output_key)
+
+if __name__ == '__main__':
+    main()
