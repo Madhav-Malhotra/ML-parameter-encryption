@@ -7,10 +7,10 @@ The following dependencies are required: `json`, `torch`, `random`, `pickle`,
 
 This file can also be imported as a module with these objects:
 
-    * EncryptionUtils - Class to encrypt model parameters.
-    * get_layer_set - Randomly selects model parameters for encryption.
-    * decrypt_parameters - Decrypts a model's parameters given a secret key.
-    * secret_formatter - Saves the secret key in a JSON/pickle format. 
+    * EncryptionUtils: Class to encrypt model parameters.
+    * get_layer_set: Randomly selects model parameters for encryption.
+    * decrypt_parameters: Decrypts a model's parameters given a secret key.
+    * secret_formatter: Saves the secret key in a JSON/pickle format. 
 """
 
 import json
@@ -67,7 +67,7 @@ def get_model(model_path : str, device : torch.device) -> torch.nn.Module:
     Load model, turn off redundant gradients, and move to selected device
     '''
 
-    model = torch.load(model_path)
+    model = torch.jit.load(model_path)
     model.train(False)
     model.to(device)
     return model
@@ -385,7 +385,8 @@ def decrypt_parameters(model : torch.nn.Module, secret : dict) -> None:
 def secret_formatter(
     secret : dict, 
     out_file : str, 
-    format : str='pickle') -> None:
+    format : str='pickle',
+    load : bool=False) -> None:
 
     '''
     Converts secret dictionary into a more convenient format
@@ -398,15 +399,28 @@ def secret_formatter(
     - Valid values are: 'json' or 'pickle'
     out_file (type: string)
     - The output file path to save to
+    load (type: bool)
+    - Whether to load a formatted secret instead of saving a raw secret.
 
     Returns
     --------------------
     None
     '''
     
-    write_mode = 'wb' if format == 'pickle' else 'w'
+    # file open mode
+    mode = 'r' if load else 'w'
+    if format == 'pickle':
+        mode += 'b'
     
-    with open(out_file, write_mode) as f:
+    with open(out_file, mode) as f:
+        # reading file
+        if load:
+            if (format == 'json'):
+                return json.load(f)
+            elif (format == 'pickle'):
+                return pickle.load(f)
+            
+        # writing file
         if (format == 'json'):
             json.dump(secret, f)
         elif (format == 'pickle'):
@@ -418,13 +432,32 @@ def secret_formatter(
 ##################################################
 
 def main(args):
+    # Deal with decryption (simpler) first
+    format = 'json' if args.json_key else 'pickle'
+
+    if args.decrypt_mode:
+        print("Decrypt mode enabled.")
+        print("Extracting model and secret key")
+        model = get_model(args.model, args.device)
+        secret = secret_formatter({}, args.output_key, format, True)
+
+        print("Decrypting model and saving")
+        decrypt_parameters(model, secret)
+        torch.jit.script(model, args.labels)
+
+        print("Program successfully finished")
+        return
+
+
     # Set up data, model, and layers
+    print("Extracting model and encryption data")
     model = get_model(args.model, args.device)
     encrypt_layers = get_layer_set(args.max_layers, model)
     encrypt_imgs, encrypt_labels = get_data(args.data, args.labels, args.device,
                                             not args.pt_data)
 
     # Init hyperparameters
+    print("Building dataset")
     dataset = TensorDataset(encrypt_imgs, encrypt_labels)
     encrypt_data = DataLoader(dataset, batch_size=args.batch_size)
 
@@ -432,9 +465,10 @@ def main(args):
     with torch.no_grad():
         loss = torch.nn.functional.cross_entropy(model(x), y.long())
         print("Loss before encryption:", loss)
-    loss_threshold = loss.item() * 5
+    loss_threshold = loss.item() * args.loss_multiple
 
     # Run encryption
+    print("Starting encryption")
     instance = EncryptionUtils(model, encrypt_data, encrypt_layers, args.max_params, 
                                loss_threshold, args.step_size, 
                                args.boundary_distance, args.device)
@@ -446,44 +480,56 @@ def main(args):
         print("Encrypted loss: ", loss)
     
     # Save secret and model
-    torch.save(model, args.output_model)
-    format = 'json' if args.json_key else 'pickle'
+    print("Saving encrypted model")
+    torch.jit.script(model, args.output_model)
     secret_formatter(secret, args.output_key, format)
+
+    print("Program successfully finished")
 
 
 if __name__ == '__main__':
     # initialise argument parser
     parser = argparse.ArgumentParser(description=__doc__)
 
+    parser.add_argument('data', type=str, 
+                        help='Filepath for encryption data (or secret key in decrypt mode)')
+    parser.add_argument('labels', type=str, 
+                        help='Filepath for encryption labels (or decrypted model save location in decrypt mode)')
+    parser.add_argument('model', type=str, 
+                        help='Filepath for torchscript model to encrypt/decrypt')
+
     parser.add_argument('--disable-gpu', action='store_true', help='Disable GPU use')
     parser.add_argument('--json-key', action='store_true', help='Save secret key as JSON')
     parser.add_argument('--pt-data', action='store_true', 
                         help="Pytorch dataset files instead of numpy")
+    parser.add_argument('--decrypt-mode', action='store_true', help="Decrypt model with key")
 
-    parser.add_argument('--data', type=str, help='Filepath for encryption data')
-    parser.add_argument('--labels', type=str, help='Filepath for encryption labels')
-    parser.add_argument('--model', type=str, help='Filepath for pickled model to encrypt')
-    parser.add_argument('--output-model',  type=str, default="encrypted_model.pkl", 
+    parser.add_argument('--output-model',  type=str, default="encrypted_model.pt", 
                         help='Filepath to save model after encryption')
     parser.add_argument('--output-key', type=str, default="decryption_key.pkl", 
                         help='Filepath to save secret key for decryption')
 
-    parser.add_argument('--max-layers', type=int, default=25,
+    parser.add_argument('-l', '--max-layers', type=int, default=25,
                         help='Maximum number of layers to encrypt')
-    parser.add_argument('--max-params', type=int, default=25,
+    parser.add_argument('-b', '--batch-size', type=int, default=32, 
+                        help="Number of dataset images to process at once")
+    parser.add_argument('-p', '--max-params', type=int, default=25,
                         help='Maximum number of parameters to encrypt per layer')
-    parser.add_argument('--boundary-distance', type=float, default=0.1,
-                        help='0-0.5 decimal percent. 0 means encrypted parameter values can be anywhere in range of existing parameter values. 0.5 means encrypted parameter values can only be at the midpoint of the range of existing parameter values.')
-    parser.add_argument('--step-size', type=float, default=0.07,
+    parser.add_argument('-d', '--boundary-distance', type=float, default=0.1,
+                        help='Set from 0 to 0.5. 0 = extreme where encrypted parameter values can be anywhere in range of existing parameter values. 0.5 = extreme where encrypted parameter values can only be at the midpoint of the range of existing parameter values.')
+    parser.add_argument('-s', '--step-size', type=float, default=0.1,
                         help='Step size per gradient-based update')
+    parser.add_argument('-m', '--loss-multiple', type=float, default=5,
+                        help='Stops training when the loss has grown by N times')
 
     # load arguments
     args = parser.parse_args()
     args.device = None
 
-    if not args.disable_cuda and torch.cuda.is_available():
+    if not args.disable_gpu and torch.cuda.is_available():
         args.device = torch.device('cuda')
     else:
         args.device = torch.device('cpu')
     
-    main(args)
+    if args.data and args.labels and args.model:
+        main(args)
