@@ -11,7 +11,7 @@ The algorithms implemented are described in the following papers:
 
 This algorithm currently has a Pytorch implementation for any model derived from the [`torch.jit.ScriptModule`](https://pytorch.org/docs/stable/generated/torch.jit.ScriptModule.html#torch.jit.ScriptModule) class. Models stored using [`torch.nn.Module`](https://pytorch.org/docs/stable/generated/torch.nn.Module.html) class can easily be converted to and from this format. 
 
-### Script-based Usage
+<details><summary><h3>Script-based Usage</h3></summary>
 
 Download `/adv_params/adv_prams_pt.py` from this repository into some directory. In that same directory, **save your model** using code like the following: 
 ```python
@@ -87,3 +87,5 @@ Some notes explaining the above options:
   - $B_{low} = \min{W_l} + \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{low}$ is the lowest acceptable encryption value and $W_l$ represents the parameters of the $lth$ layer. 
   -  $B_{high} = \max{W_l} - \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{high}$ is the lowest acceptable encryption value.
 - The loss multiple sets the algorithm to stop encryption early if the loss has been raised (performance has been deteriorated) sufficiently. Ex: If you set this value to 5, then parameters stop being modified (encrypted) when the average loss across batches is 5 times higher than the loss prior to encryption. 
+
+</details>
