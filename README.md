@@ -9,7 +9,9 @@ The algorithms implemented are described in the following papers:
 
 ## AdvParams
 
-This algorithm currently has a Pytorch implementation for any model derived from the [`torch.jit.ScriptModule`](https://pytorch.org/docs/stable/generated/torch.jit.ScriptModule.html#torch.jit.ScriptModule) class. Models stored using [`torch.nn.Module`](https://pytorch.org/docs/stable/generated/torch.nn.Module.html) class can easily be converted to and from this format. 
+This algorithm currently has a Pytorch implementation for any model derived from the [`torch.jit.ScriptModule`](https://pytorch.org/docs/stable/generated/torch.jit.ScriptModule.html#torch.jit.ScriptModule) or [`torch.nn.Module`](https://pytorch.org/docs/stable/generated/torch.nn.Module.html) class. 
+
+Models can easily be converted between these two formats. Still, the **Module-based usage section is ideal for beginners** since it shows how to apply the core encryption functions to the common `torch.nn.Module` format.
 
 <details><summary><h3>Script-based Usage</h3></summary>
 
@@ -47,8 +49,7 @@ usage: adv_params_pt.py [-h] [--disable-gpu] [--json-key] [--pt-data] [--decrypt
                         [-p MAX_PARAMS] [-d BOUNDARY_DISTANCE] [-s STEP_SIZE] [-m LOSS_MULTIPLE]
                         data labels model
 
-ADVERSARIAL PARAMETER ENCRYPTION This script encrypts the parameters of an input Pytorch model. The following dependencies are required: `json`, `torch`, `random`, `pickle`,
-`argparse`, `numpy`, and `datetime`.
+ADVERSARIAL PARAMETER ENCRYPTION This script encrypts the parameters of an input Pytorch model. The following dependencies must be installed: `json`, `torch`, `random`, `pickle`, `argparse`, `numpy`, and `datetime`.
 
 positional arguments:
   data                  Filepath for encryption data (or secret key in decrypt mode)
@@ -83,9 +84,87 @@ options:
 
 Some notes explaining the above options: 
 - The **positional arguments are different for encryption mode and decryption mode**. In encryption mode, the arguments in order are `data_source.npy label_source.npy model_source.pt`. In decryption mode, the arguments in order are `decryption_key.pkl output_model_filepath.pt model_to_decrypt.pt`.
-- A key aim of the algorithm is to prevent encrypted (modified) parameters from being distinguishable from unencrypted (original) parameters. It does this by ensuring encrypted parameter values stay within certain boundaries set within the range of existing parameter values in each layer. These **boundaries are computed using the boundary distance ($\beta$) as follows**:
-  - $B_{low} = \min{W_l} + \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{low}$ is the lowest acceptable encryption value and $W_l$ represents the parameters of the $lth$ layer. 
-  -  $B_{high} = \max{W_l} - \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{high}$ is the lowest acceptable encryption value.
+- A key aim of the algorithm is to keep encrypted (modified) parameters indistinguishable from unencrypted (original) parameters. To do this, it keeps encrypted parameter values within certain boundaries set within the range of existing parameter values in each layer. These **boundaries are computed using the boundary distance ($\beta$) as follows**:
+  - $B_{low} = \min{W_l} + \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{low}$ is the lowest acceptable encrypted parameter value and $W_l$ represents the parameters of the $lth$ layer. 
+  -  $B_{high} = \max{W_l} - \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{high}$ is the highest acceptable encrypted parameter value.
 - The loss multiple sets the algorithm to stop encryption early if the loss has been raised (performance has been deteriorated) sufficiently. Ex: If you set this value to 5, then parameters stop being modified (encrypted) when the average loss across batches is 5 times higher than the loss prior to encryption. 
+
+</details>
+
+<details><summary><h3>Module-based Usage</h3></summary>
+
+You can also import the Python script in `adv_params/adv_params_pt.py` as a module in your own Python scripts. The following dependencies must be installed: `json`, `torch`, `random`, `pickle`, `argparse`, `numpy`, and `datetime`.
+
+Useful objects to import are:
+- `EncryptionUtils`: Class to encrypt model parameters. 
+- `get_layer_set`: Randomly selects model parameters for encryption. 
+- `decrypt_parameters`: Decrypts a model's parameters given a secret key. 
+- `secret_formatter`: Saves the secret key in a JSON/pickle format.
+
+Here is some example code **showing how models can be encrypted**. Put this file in the same directory as `adv_params_pt.py`
+```python
+import torch
+import pickle
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
+from adv_params_pt import EncryptionUtils, get_layer_set
+
+# Get a torch.nn.Module or torch.jit.ScriptModule however you want
+model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2', pretrained=True)
+
+# Load your dataset however you want
+dataset = TensorDataset(YOUR_DATA_HERE, YOUR_LABELS_HERE)
+encrypt_data = DataLoader(dataset, batch_size=32)
+
+
+# Declare hyperparameters
+max_layers = 25                 # max layers to encrypt
+max_params = 25                 # max parameters to encrypt per layer
+step_size = 0.1                 # adjusts gradient update size
+loss_multiple = 5               # stop encrypting when loss raised 5x
+boundary_distance = 0.1         # set 0-0.5. See docs for details
+device = torch.device('cpu')
+
+# Set a max loss to stop at
+x,y = next(iter(encrypt_data))
+with torch.no_grad():
+    loss = F.cross_entropy(model(x), y.long())
+loss_threshold = loss.item() * loss_multiple
+
+
+# Encrypt the model
+encrypt_layers = get_layer_set(max_layers, model) 
+instance = EncryptionUtils(model, encrypt_data, encrypt_layers,
+                          max_params, loss_threshold, step_size, 
+                          boundary_distance, device)
+secret = instance.encrypt_parameters() 
+
+
+# Save your secret (decryption key) and encrypted model parameters at the end.
+torch.save(model, 'encrypted_model.pkl')
+f = open('decrpytion_key.pkl', 'wb')
+pickle.dump(secret, f)
+f.close()
+```
+
+A **note about the boundary distance hyperparameter**:
+- A key aim of the algorithm is to keep encrypted (modified) parameters indistinguishable from unencrypted (original) parameters. To do this, it keeps encrypted parameter values within certain boundaries set within the range of existing parameter values in each layer. These boundaries are computed using the boundary distance ($\beta$) as follows:
+  - $B_{low} = \min{W_l} + \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{low}$ is the lowest acceptable encrypted parameter value and $W_l$ represents the parameters of the $lth$ layer. 
+  -  $B_{high} = \max{W_l} - \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{high}$ is the highest acceptable encrypted parameter value.
+
+Finally, this code snippet shows **how to decrypt models**:
+```python
+import torch
+import pickle
+from adv_params_pt import decrypt_parameters
+
+# Load encrypted data
+model = torch.load(model, 'encrypted_model.pkl')
+secret = pickle.load('decryption_key.pkl')
+
+# Decrypt parameters and save model
+decrypt_parameters(model, secret)
+torch.save(model, 'decrypted_model.pkl')
+```
 
 </details>
