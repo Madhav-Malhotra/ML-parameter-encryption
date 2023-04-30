@@ -1,6 +1,0 @@
-decryption_key.pkl
-encrypt_imgs.npy
-encrypt_labels.npy
-encrypted_model.pkl
-model_scripted.pt
-temp.py
