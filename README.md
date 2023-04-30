@@ -43,13 +43,12 @@ To see other script options, run
 ```
 python3 adv_params.py --help
 
-usage: adv_params_pt.py [-h] [--disable-gpu] [--json-key] [--pt-data] [--decrypt-mode] [--output-model OUTPUT_MODEL] [--output-key OUTPUT_KEY] [-l MAX_LAYERS] [-b BATCH_SIZE] [-p MAX_PARAMS]
-                        [-d BOUNDARY_DISTANCE] [-s STEP_SIZE] [-m LOSS_MULTIPLE]
+usage: adv_params_pt.py [-h] [--disable-gpu] [--json-key] [--pt-data] [--decrypt-mode] [--output-model OUTPUT_MODEL] [--output-key OUTPUT_KEY] [-l MAX_LAYERS] [-b BATCH_SIZE]
+                        [-p MAX_PARAMS] [-d BOUNDARY_DISTANCE] [-s STEP_SIZE] [-m LOSS_MULTIPLE]
                         data labels model
 
-ADVERSARIAL PARAMETER ENCRYPTION This script encrypts the parameters of an input Pytorch model. The following dependencies are required: `json`, `torch`, `random`, `pickle`, `argparse`, `numpy`,
-and `datetime`. This file can also be imported as a module with these objects: * EncryptionUtils: Class to encrypt model parameters. * get_layer_set: Randomly selects model parameters for
-encryption. * decrypt_parameters: Decrypts a model's parameters given a secret key. * secret_formatter: Saves the secret key in a JSON/pickle format.
+ADVERSARIAL PARAMETER ENCRYPTION This script encrypts the parameters of an input Pytorch model. The following dependencies are required: `json`, `torch`, `random`, `pickle`,
+`argparse`, `numpy`, and `datetime`.
 
 positional arguments:
   data                  Filepath for encryption data (or secret key in decrypt mode)
@@ -67,16 +66,24 @@ options:
   --output-key OUTPUT_KEY
                         Filepath to save secret key for decryption
   -l MAX_LAYERS, --max-layers MAX_LAYERS
-                        Maximum number of layers to encrypt
+                        Default 25. Maximum number of layers to encrypt
   -b BATCH_SIZE, --batch-size BATCH_SIZE
-                        Number of dataset images to process at once
+                        Default 32. Number of examples to process at once
   -p MAX_PARAMS, --max-params MAX_PARAMS
-                        Maximum number of parameters to encrypt per layer
+                        Default 25. Maximum number of parameters to encrypt per layer
   -d BOUNDARY_DISTANCE, --boundary-distance BOUNDARY_DISTANCE
-                        Set from 0 to 0.5. 0 = extreme where encrypted parameter values can be anywhere in range of existing parameter values. 0.5 = extreme where encrypted parameter values can
-                        only be at the midpoint of the range of existing parameter values.
+                        Default 0.1. Set from 0 to 0.5. 
+                        0 = encrypted parameters can be anywhere in range of existing parameters. 
+                        0.5 = encrypted parameters must be existing parameter range's midpoint.
   -s STEP_SIZE, --step-size STEP_SIZE
-                        Step size per gradient-based update
+                        Default 0.1. Step size per gradient-based update
   -m LOSS_MULTIPLE, --loss-multiple LOSS_MULTIPLE
-                        Stops training when the loss has grown by N times
+                        Default 5. Stops training when loss has grown by N times
 ```
+
+Some notes explaining the above options: 
+- The **positional arguments are different for encryption mode and decryption mode**. In encryption mode, the arguments in order are `data_source.npy label_source.npy model_source.pt`. In decryption mode, the arguments in order are `decryption_key.pkl output_model_filepath.pt model_to_decrypt.pt`.
+- A key aim of the algorithm is to prevent encrypted (modified) parameters from being distinguishable from unencrypted (original) parameters. It does this by ensuring encrypted parameter values stay within certain boundaries set within the range of existing parameter values in each layer. These **boundaries are computed using the boundary distance ($\beta$) as follows**:
+  - $B_{low} = \min{W_l} + \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{low}$ is the lowest acceptable encryption value and $W_l$ represents the parameters of the $lth$ layer. 
+  -  $B_{high} = \max{W_l} - \beta \cdot (\max{W_l} - \min{W_l})$ - where $B_{high}$ is the lowest acceptable encryption value.
+- The loss multiple sets the algorithm to stop encryption early if the loss has been raised (performance has been deteriorated) sufficiently. Ex: If you set this value to 5, then parameters stop being modified (encrypted) when the average loss across batches is 5 times higher than the loss prior to encryption. 

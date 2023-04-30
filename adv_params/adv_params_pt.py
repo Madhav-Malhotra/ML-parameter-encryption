@@ -2,15 +2,7 @@
 
 This script encrypts the parameters of an input Pytorch model.
 
-The following dependencies are required: `json`, `torch`, `random`, `pickle`,
-`argparse`, `numpy`, and  `datetime`.
-
-This file can also be imported as a module with these objects:
-
-    * EncryptionUtils: Class to encrypt model parameters.
-    * get_layer_set: Randomly selects model parameters for encryption.
-    * decrypt_parameters: Decrypts a model's parameters given a secret key.
-    * secret_formatter: Saves the secret key in a JSON/pickle format. 
+The following dependencies are required: `json`, `torch`, `random`, `pickle`, `argparse`, `numpy`, and  `datetime`. 
 """
 
 import json
@@ -515,17 +507,17 @@ if __name__ == '__main__':
                         help='Filepath to save secret key for decryption')
 
     parser.add_argument('-l', '--max-layers', type=int, default=25,
-                        help='Maximum number of layers to encrypt')
+                        help='Default 25. Maximum number of layers to encrypt')
     parser.add_argument('-b', '--batch-size', type=int, default=32, 
-                        help="Number of dataset images to process at once")
+                        help="Default 32. Number of examples to process at once")
     parser.add_argument('-p', '--max-params', type=int, default=25,
-                        help='Maximum number of parameters to encrypt per layer')
+                        help='Default 25. Maximum number of parameters to encrypt per layer')
     parser.add_argument('-d', '--boundary-distance', type=float, default=0.1,
-                        help='Set from 0 to 0.5. 0 = extreme where encrypted parameter values can be anywhere in range of existing parameter values. 0.5 = extreme where encrypted parameter values can only be at the midpoint of the range of existing parameter values.')
+                        help='Default 0.1. Set from 0 to 0.5. 0 = extreme where encrypted parameter values can be anywhere in range of existing parameter values. 0.5 = extreme where encrypted parameter values can only be at the midpoint of the range of existing parameter values.')
     parser.add_argument('-s', '--step-size', type=float, default=0.1,
-                        help='Step size per gradient-based update')
+                        help='Default 0.1. Step size per gradient-based update')
     parser.add_argument('-m', '--loss-multiple', type=float, default=5,
-                        help='Stops training when the loss has grown by N times')
+                        help='Default 5. Stops training when the loss has grown by N times')
 
     # load arguments
     args = parser.parse_args()
