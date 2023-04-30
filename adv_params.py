@@ -163,7 +163,6 @@ class EncryptionUtils:
 
         # Compute gradient and average loss for batches
         for x,y in self.encrypt_data:
-            print('.', end="")
             batches += 1
             
             pred = self.model(x)
@@ -320,7 +319,7 @@ class EncryptionUtils:
 
             # Only run updates on current layer up to max iters
             for i in range(self.max_per_layer):
-                print(i, end="")
+                print(i)
                 self.model.zero_grad()
                 avg_loss, batches = self.compute_avg_loss()
 
@@ -443,7 +442,12 @@ def main(args):
 
         print("Decrypting model and saving")
         decrypt_parameters(model, secret)
-        torch.jit.script(model, args.labels)
+        model_scripted = torch.jit.script(model)
+
+        out_file = "decrypted_model.pt"
+        if not args.output_model == "encrypted_model.pt":
+            out_file = args.output_model
+        model_scripted.save(out_file)
 
         print("Program successfully finished")
         return
@@ -481,7 +485,8 @@ def main(args):
     
     # Save secret and model
     print("Saving encrypted model")
-    torch.jit.script(model, args.output_model)
+    model_scripted = torch.jit.script(model)
+    model_scripted.save(args.output_model)
     secret_formatter(secret, args.output_key, format)
 
     print("Program successfully finished")
@@ -494,7 +499,7 @@ if __name__ == '__main__':
     parser.add_argument('data', type=str, 
                         help='Filepath for encryption data (or secret key in decrypt mode)')
     parser.add_argument('labels', type=str, 
-                        help='Filepath for encryption labels (or decrypted model save location in decrypt mode)')
+                        help='Filepath for encryption labels (or location to save decrypted model in decrypt mode)')
     parser.add_argument('model', type=str, 
                         help='Filepath for torchscript model to encrypt/decrypt')
 
