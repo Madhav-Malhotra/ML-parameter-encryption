@@ -121,7 +121,7 @@ class EncryptionUtils:
         self.boundary_distance = boundary_distance
         self.device = device
     
-    def compute_bounds(self, layer_params):
+    def compute_bounds(self, layer_params : torch.Tensor) -> list:
         '''
         Computes boundaries for parameter values in selected layer
         
@@ -132,9 +132,9 @@ class EncryptionUtils:
         
         Returns
         --------------------
-        bound_low (type: float)
+        bound_low (type: torch.Tensor, dim: 0)
         - lower limit on parameter values
-        bound_high (type: float)
+        bound_high (type: torch.Tensor, dim: 0)
         - upper limit on parameter values
         '''
         
