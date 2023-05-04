@@ -44,6 +44,7 @@ def get_data(data_path: str, label_path: str, device: str) -> list:
     # Load saved tensors
     with tf.device(device):
         encrypt_imgs = tf.constant(np.load(data_path), dtype=tf.float32)
+        encrypt_imgs = tf.transpose(encrypt_imgs, perm=[0, 2, 3, 1])
         encrypt_labels = tf.constant(np.load(label_path), dtype=tf.int32)
 
     return encrypt_imgs, encrypt_labels
@@ -54,14 +55,10 @@ def get_model(model_path: str, device: str) -> tf.Module:
     Load model, turn off redundant gradient computation, and move to selected device
     '''
 
-    model = tf.keras.models.load_model(model_path)
-    model.trainable = True
-
-    if device == 'gpu':
-        model = model.gpu()
-    else:
-        model = model.cpu()
-
+    with tf.device(device):
+        model = tf.keras.models.load_model(model_path)
+        model.trainable = True
+    
     return model
 
 
@@ -458,8 +455,8 @@ def save_model(model : tf.Module, filepath : str) -> None:
     model (type: tf.Module or derivative class)
     - Model to save. 
     filepath (type: str)
-    - NOTE: this must include a blank parent directory and blank subdirectory. 
-    - Ex: saved_models/your_model - both saved_models and your_model are empty.
+    - NOTE: this must include a parent directory and empty subdirectory. 
+    - Ex: saved_models/your_model - ex: your_model is empty.
 
     Returns
     ---------------------
@@ -515,7 +512,7 @@ def main(args):
     loss = tf.keras.losses.sparse_categorical_crossentropy(y, model(x), from_logits=True)
     loss = tf.math.reduce_mean(loss)
     print("Loss before encryption:", loss)
-    loss_threshold = loss.item() * args.loss_multiple
+    loss_threshold = float(loss) * args.loss_multiple
 
     # Run encryption
     print("Starting encryption")
@@ -553,7 +550,7 @@ if __name__ == '__main__':
     parser.add_argument('--decrypt-mode', action='store_true', help="Decrypt model with key")
 
     parser.add_argument('--output-model',  type=str, default="saved_model/encrypted_model", 
-                        help='Default: saved_model/encrypted_model. Filepath to save model after encryption. Must include blank parent directory and blank subdirectory.')
+                        help='Default: saved_model/encrypted_model. Filepath to save model after encryption. Must include parent directory and empty subdirectory.')
     parser.add_argument('--output-key', type=str, default="decryption_key.pkl", 
                         help='Default decryption_key.pkl. Filepath to save secret key for decryption')
 
@@ -575,7 +572,7 @@ if __name__ == '__main__':
     args.device = None
 
     if not args.disable_gpu and \
-    tf.config.list_physical_devices(device_type='GPU').length:
+    len(tf.config.list_physical_devices(device_type='GPU')):
         args.device = 'gpu'
     else:
         args.device = 'cpu'
