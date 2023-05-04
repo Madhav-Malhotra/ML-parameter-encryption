@@ -2,9 +2,10 @@
 
 This script encrypts the parameters of an input Pytorch model.
 
-The following dependencies are required: `json`, `tensorflow`, `random`, `pickle`, `argparse`, `numpy`, and  `datetime`. 
+The following dependencies are required: `os`, `json`, `tensorflow`, `random`, `pickle`, `argparse`, `numpy`, and  `datetime`. 
 """
 
+import os
 import json
 import pickle
 import random
@@ -53,7 +54,7 @@ def get_model(model_path: str, device: str) -> tf.Module:
     Load model, turn off redundant gradient computation, and move to selected device
     '''
 
-    model = tf.saved_model.load(model_path)
+    model = tf.keras.models.load_model(model_path)
     model.trainable = True
 
     if device == 'gpu':
@@ -448,6 +449,30 @@ def secret_formatter(
         elif (format == 'pickle'):
             pickle.dump(secret, f)
 
+def save_model(model : tf.Module, filepath : str) -> None: 
+    ''' 
+    Saves model to filesystem to load later. 
+    
+    Parameters
+    ---------------------
+    model (type: tf.Module or derivative class)
+    - Model to save. 
+    filepath (type: str)
+    - NOTE: this must include a blank parent directory and blank subdirectory. 
+    - Ex: saved_models/your_model - both saved_models and your_model are empty.
+
+    Returns
+    ---------------------
+    None
+    '''
+
+    # check directory
+    if not os.path.exists(filepath):
+        os.makedirs(filepath)
+    
+    model.save(filepath)
+
+
 
 ##################################################
 ##################### MAIN #######################
@@ -465,12 +490,11 @@ def main(args):
 
         print("Decrypting model and saving")
         decrypt_parameters(model, secret)
-        model_scripted = torch.jit.script(model)
 
-        out_file = "decrypted_model.pt"
-        if not args.output_model == "encrypted_model.tf":
+        out_file = "decryption_finished/decrypted_model"
+        if not args.output_model == "saved_model/encrypted_model":
             out_file = args.output_model
-        model_scripted.save(out_file)
+        save_model(model, out_file)
 
         print("Program successfully finished")
         return
@@ -507,8 +531,7 @@ def main(args):
     
     # Save secret and model
     print("Saving encrypted model")
-    model_scripted = torch.jit.script(model)
-    model_scripted.save(args.output_model)
+    save_model(model, args.output_model)
     secret_formatter(secret, args.output_key, format)
 
     print("Program successfully finished")
@@ -529,10 +552,10 @@ if __name__ == '__main__':
     parser.add_argument('--json-key', action='store_true', help='Save secret key as JSON')
     parser.add_argument('--decrypt-mode', action='store_true', help="Decrypt model with key")
 
-    parser.add_argument('--output-model',  type=str, default="encrypted_model.tf", 
-                        help='Filepath to save model after encryption')
+    parser.add_argument('--output-model',  type=str, default="saved_model/encrypted_model", 
+                        help='Default: saved_model/encrypted_model. Filepath to save model after encryption. Must include blank parent directory and blank subdirectory.')
     parser.add_argument('--output-key', type=str, default="decryption_key.pkl", 
-                        help='Filepath to save secret key for decryption')
+                        help='Default decryption_key.pkl. Filepath to save secret key for decryption')
 
     parser.add_argument('-l', '--max-layers', type=int, default=25,
                         help='Default 25. Maximum number of layers to encrypt')
