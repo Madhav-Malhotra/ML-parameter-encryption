@@ -359,7 +359,7 @@ class EncryptionUtils:
                 
                 # Update old value
                 updated_params = param.read_value()
-                tf.tensor_scatter_nd_update(updated_params, [unrolled_i], tf.constant([clipped]))
+                updated_params = tf.tensor_scatter_nd_update(updated_params, [unrolled_i], tf.constant([clipped]))
                 param.assign(updated_params)
             
             # Disable grad after layer operations finished
