@@ -31,8 +31,7 @@ Models can easily be converted between these two formats. Still, the **Module-ba
 <details><summary><h3>Script-based Usage</h3></summary>
 
 Download `/adv_params/adv_prams_pt.py` from this repository into some directory. In that same directory, **save your model** using code like the following: 
-```python
-
+```Python
 import torch
 
 # Example pretrained model. Replace with your own model.
