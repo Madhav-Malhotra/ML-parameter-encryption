@@ -15,7 +15,6 @@ import tensorflow as tf
 from datetime import datetime
 
 
-
 ##################################################
 ################# DATA LOADING ###################
 ##################################################
@@ -399,7 +398,7 @@ def decrypt_parameters(model : tf.Module, modifications : dict) -> None:
             for index, value in modifications[param.name]:
                 updated_params = param.read_value()
                 current = float(tf.slice(updated_params, begin=index, size=[1 for i in index]))
-                tf.tensor_scatter_nd_update(updated_params, [index], tf.constant([current - value]))
+                updated_params = tf.tensor_scatter_nd_update(updated_params, [index], tf.constant([current - value]))
                 param.assign(updated_params)
 
 def secret_formatter(
