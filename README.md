@@ -311,33 +311,37 @@ Useful objects to import are:
 
 Here is some example code **showing how models can be encrypted**. Put this file in the same directory as `adv_params_tf.py`
 ```python
-import torch
+import os
 import pickle
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
-from adv_params_pt import EncryptionUtils, get_layer_set
+import tensorflow as tf
+from adv_params_tf import EncryptionUtils, get_layer_set
 
-# Get a torch.nn.Module or torch.jit.ScriptModule however you want
-model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2', pretrained=True)
+# Get a tf.Module (or derivative class) however you want
+model = tf.keras.applications.mobilenet_v2.MobileNetV2(
+    input_shape=None,
+    alpha=1.0,
+    weights='imagenet',
+    classifier_activation=None) 
+model.trainable = True
 
 # Load your dataset however you want
-dataset = TensorDataset(YOUR_DATA_HERE, YOUR_LABELS_HERE)
-encrypt_data = DataLoader(dataset, batch_size=32)
+dataset = tf.data.Dataset.from_tensor_slices((YOUR_DATA_HERE, YOUR_LABELS_HERE))
+encrypt_data = dataset.batch(32)
 
 
 # Declare hyperparameters
-max_layers = 25                 # max layers to encrypt
-max_params = 25                 # max parameters to encrypt per layer
-step_size = 0.1                 # adjusts gradient update size
-loss_multiple = 5               # stop encrypting when loss raised 5x
-boundary_distance = 0.1         # set 0-0.5. See docs for details
-device = torch.device('cpu')
+max_layers = 25             # max layers to encrypt
+max_params = 25             # max parameters to encrypt per layer
+step_size = 0.1             # adjusts gradient update size
+loss_multiple = 5           # stop encrypting when loss raised 5x
+boundary_distance = 0.1     # set 0-0.5. See docs for details
+device = 'cpu'
 
 # Set a max loss to stop at
 x,y = next(iter(encrypt_data))
-with torch.no_grad():
-    loss = F.cross_entropy(model(x), y.long())
-loss_threshold = loss.item() * loss_multiple
+loss = tf.keras.losses.sparse_categorical_crossentropy(y, model(x), from_logits=True)
+loss = tf.math.reduce_mean(loss)
+loss_threshold = float(loss) * loss_multiple
 
 
 # Encrypt the model
@@ -348,8 +352,13 @@ instance = EncryptionUtils(model, encrypt_data, encrypt_layers,
 secret = instance.encrypt_parameters() 
 
 
-# Save your secret (decryption key) and encrypted model parameters at the end.
-torch.save(model, 'encrypted_model.pkl')
+# Save your encrypted model parameters
+filepath = 'saved_model/encrypted_model'
+if not os.path.exists(filepath):
+    os.makedirs(filepath)
+model.save(filepath)
+
+# Save your secret (decryption key)
 f = open('decrpytion_key.pkl', 'wb')
 pickle.dump(secret, f)
 f.close()
@@ -362,17 +371,20 @@ A **note about the boundary distance hyperparameter**:
 
 Finally, this code snippet shows **how to decrypt models**:
 ```python
-import torch
 import pickle
-from adv_params_pt import decrypt_parameters
+import tensorflow as tf
+from adv_params_tf import decrypt_parameters
 
 # Load encrypted data
-model = torch.load(model, 'encrypted_model.pkl')
+device = 'cpu'
+with tf.device(device):
+        model = tf.keras.models.load_model('saved_model/encrypted_model')
+        model.trainable = True
 secret = pickle.load('decryption_key.pkl')
 
 # Decrypt parameters and save model
 decrypt_parameters(model, secret)
-torch.save(model, 'decrypted_model.pkl')
+model.save('saved_model/decrypted_model')
 ```
 
 </details>
