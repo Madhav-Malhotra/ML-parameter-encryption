@@ -23,7 +23,7 @@ This algorithm currently has a Pytorch implementation for any model derived from
 
 Models can easily be converted between these two formats. Still, the **Module-based usage section is ideal for beginners** since it shows how to apply the core encryption functions to the common `torch.nn.Module` format.
 
-
+[See this Kaggle notebook for a demo](https://www.kaggle.com/code/madhavmalhotra/advparams-parameter-encryption/notebook) of the AdvParam algorithm.
 
 
 
@@ -206,6 +206,7 @@ torch.save(model, 'decrypted_model.pkl')
 
 This algorithm currently has a Tensorflow implementation for any model derived from the [`tf.Module`](https://www.tensorflow.org/api_docs/python/tf/Module) class. This includes both the [Functional](https://www.tensorflow.org/guide/keras/functional) and [Sequential](https://www.tensorflow.org/api_docs/python/tf/keras/Sequential) API.  
 
+[See this Kaggle notebook for a demo](https://www.kaggle.com/code/madhavmalhotra/tf-fork-of-advparams-parameter-encryption/notebook) of the AdvParam algorithm.
 
 
 
