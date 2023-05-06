@@ -1,19 +1,52 @@
+"""DEEP LOCK
+
+This script encrypts the parameters of an input Pytorch model.
+
+The following dependencies are required: `torch`, `argparse`, and `struct`. 
+"""
+
+import torch
 import struct
+import argparse
+
+
+
+##############################################
+#                                            #
+#                  Byte Utils                #
+#                                            #
+##############################################
 
 def float_to_bytes(float):
-    ''' Returns a bytes object with four bytes '''
     return struct.pack('f', float)
 
+
 def bytes_to_float(bytes):
-    ''' Returns the float at the first element of a tuple '''
+    # Returns the float at the first element of the tuple
     return struct.unpack('f', bytes)[0]
 
+
 def xor_bytes(bytes1, bytes2):
-    ''' Returns the XOR of two bytes objects '''
+    ''' Returns new bytes object after XORing each byte '''
     return bytes([b1 ^ b2 for b1, b2 in zip(bytes1, bytes2)])
 
+
 def AES_sub_bytes(byte, inverse = False):
-    ''' Returns bytes object after AES sub-bytes on each byte '''
+    ''' 
+    Performs AES sub-bytes on each byte 
+    
+    Parameters
+    ----------------
+    byte (type: bytes)
+    - Bytes object to perform AES sub-bytes on
+    inverse (type: boolean)
+    - When true, runs byte through inverse rijndael s-box
+
+    Returns
+    ----------------
+    bytes
+    - Bytes object after AES sub-bytes
+    '''
 
     # Create dict of s-box values and inverse s-box values
     sbox = {
@@ -67,6 +100,12 @@ def AES_sub_bytes(byte, inverse = False):
     
     return bytes(out)
 
+
+def AES_get_key(float_key = True):
+    num_bytes = 16 if float_key else 32 # 128 or 256 bit key
+    
+
+
 def print_bytes(bytes):
     ''' Prints a bytes object as a byte string '''
     
@@ -80,14 +119,58 @@ def print_bytes(bytes):
     
     print(out)
 
-b1 = float_to_bytes(3.14159)
-b2 = float_to_bytes(2.71828)
-b3 = xor_bytes(b1, b2)
-b4 = AES_sub_bytes(b3)
-b5 = xor_bytes(AES_sub_bytes(b4, inverse=True), b2)
 
-for b in [b1, b2, b3, b4, b5]:
-    print_bytes(b)
 
-for b in [b1, b2, b3, b4, b5]:
-    print(bytes_to_float(b))
+
+##############################################
+#                                            #
+#                 Model Utils                #
+#                                            #
+##############################################
+
+def get_model(model_path : str) -> torch.nn.Module:
+    '''
+    Load model, turn off redundant gradients, and move to selected device
+    '''
+
+    model = torch.jit.load(model_path)
+    model.train(False)
+    return model
+
+def main(args):
+    
+    # Set up model and secret key
+    print("Fetching model and secret key")
+    model = get_model(args.model, args.device)
+
+    # Run encryption
+    print("Starting encryption")
+    
+    
+    # Save secret and model
+    print("Saving encrypted model")
+    model_scripted = torch.jit.script(model)
+    model_scripted.save(args.output_model)
+
+    print("Program successfully finished")
+
+
+if __name__ == '__main__':
+    # initialise argument parser
+    parser = argparse.ArgumentParser(description=__doc__)
+
+    parser.add_argument('model', type=str, 
+                        help='Filepath for torchscript model to encrypt/decrypt')
+
+    parser.add_argument('--decrypt-mode', action='store_true', help="Decrypt model with key")
+
+    parser.add_argument('--output-model',  type=str, default="encrypted_model.pt", 
+                        help='Filepath to save model after encryption')
+    parser.add_argument('--output-key', type=str, default="decryption_key.pkl", 
+                        help='Filepath to save secret key for decryption')
+    
+    # load arguments
+    args = parser.parse_args()
+    
+    if args.model:
+        main(args)
