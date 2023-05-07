@@ -126,7 +126,7 @@ def sub_bytes(byte, inverse = False):
     return byte
 
 
-def get_key(current_state = None, round_const = None, key_128 = True):
+def get_key(current_state = None, round_const = None):
     ''' 
     Generates a 128 or 256 bit AES key for current round
 
@@ -136,8 +136,6 @@ def get_key(current_state = None, round_const = None, key_128 = True):
     - The current key grouped by 32 bit vectors
     round_const (type: integer)
     - The round constant for the last round
-    key_128 (type: boolean)
-    - Set to true for a 128-bit key, false for a 256 bit key
 
     Returns
     ----------------
@@ -146,18 +144,6 @@ def get_key(current_state = None, round_const = None, key_128 = True):
     round_const (type: integer)
     - The round constant for the current round
     '''
-
-    # generate initial key
-    if current_state is None:
-        # Each vec has 32 bits to get 128 or 256 bit key
-        num_vecs = 4 if key_128 else 8
-        current_state = []
-
-        for i in range(num_vecs):
-            vector = bytearray()
-            for j in range(4):
-                vector.append(random.randint(0, 255))        
-            current_state.append(vector)
 
     # generate round constant
     round_const = update_round_const(round_const)
@@ -168,7 +154,7 @@ def get_key(current_state = None, round_const = None, key_128 = True):
     transformed[0] ^= round_const
 
     # xor vectors until end of round
-    for i in range(num_vecs - 1):
+    for i in range(len(current_state) - 1):
         current_state[i] ^= transformed
         transformed = current_state[i]
 
@@ -215,7 +201,17 @@ def main(args):
 
     # Run encryption
     print("Starting encryption")
-    get_key()
+    # Each vec has 32 bits to get 128 or 256 bit key
+    num_vecs = 8 if args.key_256 else 4
+    key = []
+
+    for i in range(num_vecs):
+        vector = bytearray()
+        for j in range(4):
+            vector.append(random.randint(0, 255))        
+        key.append(vector)
+
+    key, round_const = get_key(key)
     
     # Save secret and model
     print("Saving encrypted model")
@@ -233,6 +229,7 @@ if __name__ == '__main__':
                         help='Filepath for torchscript model to encrypt/decrypt')
 
     parser.add_argument('--decrypt-mode', action='store_true', help="Decrypt model with key")
+    parser.add_argument('--key-256', action='store_true', help="Use 256-bit key, not 128-bit")
 
     parser.add_argument('--output-model',  type=str, default="encrypted_model.pt", 
                         help='Filepath to save model after encryption')
