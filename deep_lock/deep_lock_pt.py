@@ -6,8 +6,13 @@ The following dependencies are required: `torch`, `argparse`, and `struct`.
 """
 
 import torch
+import random
 import struct
 import argparse
+from datetime import datetime
+
+random.seed(datetime.now().timestamp())
+
 
 
 
@@ -31,13 +36,34 @@ def xor_bytes(bytes1, bytes2):
     return bytes([b1 ^ b2 for b1, b2 in zip(bytes1, bytes2)])
 
 
-def AES_sub_bytes(byte, inverse = False):
+def rotate_bytes(byte):
+    ''' Returns new bytes object after rotating each byte '''
+    return byte[1:] + byte[:1]
+
+def update_round_const(prev_const):
+    ''' Returns new round constant (integer) based on last round '''
+
+    # base condition
+    if prev_const == None:
+        return 1
+    
+    # Keep doubling
+    else: 
+        update = prev_const << 1
+        if update < 256:
+            return update
+        # unless constant > 1 byte.
+        else: 
+            return update ^ 0x11b
+
+
+def sub_bytes(byte, inverse = False):
     ''' 
     Performs AES sub-bytes on each byte 
     
     Parameters
     ----------------
-    byte (type: bytes)
+    byte (type: bytearray)
     - Bytes object to perform AES sub-bytes on
     inverse (type: boolean)
     - When true, runs byte through inverse rijndael s-box
@@ -88,22 +114,66 @@ def AES_sub_bytes(byte, inverse = False):
     }
     
     # select sbox and make bytes mutable
-    out = bytearray(byte)
     sb = sbox_inverse if inverse else sbox
 
-    for i in range(len(out)):
+    for i in range(len(byte)):
         # extract and pad hex code
-        code = hex(out[i])[2:]
+        code = hex(byte[i])[2:]
         new_val = sb[ '0' * (2 - len(code)) + code ]
         # replace original byte with new 
-        out[i] = int(new_val, 16)
+        byte[i] = int(new_val, 16)
     
-    return bytes(out)
+    return byte
 
 
-def AES_get_key(float_key = True):
-    num_bytes = 16 if float_key else 32 # 128 or 256 bit key
-    
+def get_key(current_state = None, round_const = None, key_128 = True):
+    ''' 
+    Generates a 128 or 256 bit AES key for current round
+
+    Parameters
+    ----------------
+    current_state (type: list of bytearrays)
+    - The current key grouped by 32 bit vectors
+    round_const (type: integer)
+    - The round constant for the last round
+    key_128 (type: boolean)
+    - Set to true for a 128-bit key, false for a 256 bit key
+
+    Returns
+    ----------------
+    current_state (type: list of bytearrays)
+    - The next key grouped by 32 bit vectors
+    round_const (type: integer)
+    - The round constant for the current round
+    '''
+
+    # generate initial key
+    if current_state is None:
+        # Each vec has 32 bits to get 128 or 256 bit key
+        num_vecs = 4 if key_128 else 8
+        current_state = []
+
+        for i in range(num_vecs):
+            vector = bytearray()
+            for j in range(4):
+                vector.append(random.randint(0, 255))        
+            current_state.append(vector)
+
+    # generate round constant
+    round_const = update_round_const(round_const)
+
+    # rotate, sub, and add constant to last vector
+    transformed = rotate_bytes(current_state[-1])    
+    transformed = sub_bytes(transformed)
+    transformed[0] ^= round_const
+
+    # xor vectors until end of round
+    for i in range(num_vecs - 1):
+        current_state[i] ^= transformed
+        transformed = current_state[i]
+
+    return current_state, round_const
+
 
 
 def print_bytes(bytes):
@@ -145,7 +215,7 @@ def main(args):
 
     # Run encryption
     print("Starting encryption")
-    
+    get_key()
     
     # Save secret and model
     print("Saving encrypted model")
