@@ -9,6 +9,7 @@ import torch
 import random
 import struct
 import argparse
+import numpy as np
 from datetime import datetime
 
 random.seed(datetime.now().timestamp())
@@ -22,42 +23,59 @@ random.seed(datetime.now().timestamp())
 #                                            #
 ##############################################
 
-def float_to_bytes(float):
-    return struct.pack('f', float)
+def float_to_bytes(num : float) -> bytes:
+    return struct.pack('f', num)
 
 
-def bytes_to_float(bytes):
+def bytes_to_float(b : bytes) -> float:
     # Returns the float at the first element of the tuple
-    return struct.unpack('f', bytes)[0]
+    return struct.unpack('f', b)[0]
 
 
-def xor_bytes(bytes1, bytes2):
+def xor_bytes(bytes1 : bytes, bytes2 : bytes) -> bytes:
     ''' Returns new bytes object after XORing each byte '''
     return bytes([b1 ^ b2 for b1, b2 in zip(bytes1, bytes2)])
 
 
-def rotate_bytes(byte):
+def rotate_bytes(byte : bytes) -> bytes:
     ''' Returns new bytes object after rotating each byte '''
     return byte[1:] + byte[:1]
 
-def update_round_const(prev_const):
-    ''' Returns new round constant (integer) based on last round '''
+def print_bytes(byte : bytes) -> None:
+    ''' Prints a bytes object as a byte string '''
 
-    # base condition
-    if prev_const == None:
-        return 1
+    out = ''
+    for b in bytes:
+        # Get rid of 0b prefix and pad start with zeros
+        string = bin(b)[2:]
+        string = '0' * (8 - len(string)) + string
+        # Add a space every 8 bits
+        out += string + ' '
     
-    # Keep doubling
+    print(out)
+
+
+
+
+##############################################
+#                                            #
+#               Encryption Utils             #
+#                                            #
+##############################################
+
+def update_round_const(prev_const : int) -> int:
+    ''' Returns new round constant (integer) based on last round '''
+    
+    # Keep doubling 
+    update = prev_const << 1
+    if update < 256:
+        return update
+    # unless constant > 1 byte.
     else: 
-        update = prev_const << 1
-        if update < 256:
-            return update
-        # unless constant > 1 byte.
-        else: 
-            return update ^ 0x11b
+        return update ^ 0x11b
 
 
-def sub_bytes(byte, inverse = False):
+def sub_bytes(byte : bytes, inverse : bool = False) -> bytes:
     ''' 
     Performs AES sub-bytes on each byte 
     
@@ -126,7 +144,7 @@ def sub_bytes(byte, inverse = False):
     return byte
 
 
-def get_key(current_state = None, round_const = None):
+def get_key(current_state : list = None, round_const : int = 1) -> tuple:
     ''' 
     Generates a 128 or 256 bit AES key for current round
 
@@ -145,9 +163,6 @@ def get_key(current_state = None, round_const = None):
     - The round constant for the current round
     '''
 
-    # generate round constant
-    round_const = update_round_const(round_const)
-
     # rotate, sub, and add constant to last vector
     transformed = rotate_bytes(current_state[-1])    
     transformed = sub_bytes(transformed)
@@ -155,25 +170,47 @@ def get_key(current_state = None, round_const = None):
 
     # xor vectors until end of round
     for i in range(len(current_state) - 1):
-        current_state[i] ^= transformed
+        current_state[i] = xor_bytes(current_state[i], transformed)
         transformed = current_state[i]
+
+    # update round constant
+    round_const = update_round_const(round_const)
 
     return current_state, round_const
 
+def encrypt_model(model : torch.nn.Module, key_256 : bool) -> None:
+    # Each vec has 32 bits to get 128 or 256 bit key
+    num_vecs = 8 if key_256 else 4
+    key = []
 
+    # Initialise key
+    for i in range(num_vecs):
+        vector = bytearray()
+        for j in range(4):
+            vector.append(random.randint(0, 255))        
+        key.append(vector)
 
-def print_bytes(bytes):
-    ''' Prints a bytes object as a byte string '''
-    
-    out = ''
-    for b in bytes:
-        # Get rid of 0b prefix and pad start with zeros
-        string = bin(b)[2:]
-        string = '0' * (8 - len(string)) + string
-        # Add a space every 8 bits
-        out += string + ' '
-    
-    print(out)
+    key, round_const = get_key(key)
+
+    # Go through model weights
+    for param in model.parameters():
+        # Convert parameter tensor to bytes
+        param_bytes = bytearray(param.data.numpy().tobytes())
+
+        # Encrypt 4 floats or doubles at a time
+        for i in range(0, len(param_bytes), num_vecs * 4):
+            param_bytes[i:i + num_vecs * 4] = sub_bytes(bytearray(
+                xor_bytes(param_bytes[i:i + num_vecs * 4], b''.join(key))
+            ))
+
+            # Update key
+            key, round_const = get_key(key, round_const)
+
+        # Update parameter
+        dtype = np.float32 if param.data.dtype == torch.float32 else np.float64
+        param.data = torch.from_numpy(
+            np.frombuffer(param_bytes, dtype=dtype).reshape(param.data.shape)
+        )
 
 
 
@@ -201,18 +238,8 @@ def main(args):
 
     # Run encryption
     print("Starting encryption")
-    # Each vec has 32 bits to get 128 or 256 bit key
-    num_vecs = 8 if args.key_256 else 4
-    key = []
+    encrypt_model(model, args.key_256)
 
-    for i in range(num_vecs):
-        vector = bytearray()
-        for j in range(4):
-            vector.append(random.randint(0, 255))        
-        key.append(vector)
-
-    key, round_const = get_key(key)
-    
     # Save secret and model
     print("Saving encrypted model")
     model_scripted = torch.jit.script(model)
