@@ -45,7 +45,7 @@ def print_bytes(byte : bytes) -> None:
     ''' Prints a bytes object as a byte string '''
 
     out = ''
-    for b in bytes:
+    for b in byte:
         # Get rid of 0b prefix and pad start with zeros
         string = bin(b)[2:]
         string = '0' * (8 - len(string)) + string
@@ -178,22 +178,44 @@ def get_key(current_state : list = None, round_const : int = 1) -> tuple:
 
     return current_state, round_const
 
-def encrypt_model(model : torch.nn.Module, key_256 : bool) -> None:
+def encrypt_model(model : torch.nn.Module, key_256 : bool) -> bytes:
+    '''
+    Generates a key and uses it to encrypt model parameters.
+
+    Parameters
+    ----------------
+    model (type: torch.nn.Module)
+    - The model to encrypt
+    key_256 (type: boolean)
+    - Whether to use a 128 or 256 bit key
+
+    Returns
+    ----------------
+    master_key (type: bytes)
+    - The key you'll need to decrypt the model
+    '''
+    
     # Each vec has 32 bits to get 128 or 256 bit key
     num_vecs = 8 if key_256 else 4
+    master_key = bytearray()
     key = []
 
-    # Initialise key
+    # Initialise master key
     for i in range(num_vecs):
         vector = bytearray()
         for j in range(4):
-            vector.append(random.randint(0, 255))        
-        key.append(vector)
+            vector.append(random.randint(0, 255)) 
 
+        # Save key bytes       
+        key.append(vector)
+        master_key += vector
+
+    # Get first round key to start encryption
     key, round_const = get_key(key)
 
     # Go through model weights
     for param in model.parameters():
+        print(".")
         # Convert parameter tensor to bytes
         param_bytes = bytearray(param.data.numpy().tobytes())
 
@@ -202,6 +224,51 @@ def encrypt_model(model : torch.nn.Module, key_256 : bool) -> None:
             param_bytes[i:i + num_vecs * 4] = sub_bytes(bytearray(
                 xor_bytes(param_bytes[i:i + num_vecs * 4], b''.join(key))
             ))
+
+            # Update key
+            key, round_const = get_key(key, round_const)
+
+        # Update parameter
+        dtype = np.float32 if param.data.dtype == torch.float32 else np.float64
+        param.data = torch.from_numpy(
+            np.frombuffer(param_bytes, dtype=dtype).reshape(param.data.shape)
+        )
+    
+    return bytes(master_key)
+
+def decrypt_model(model : torch.nn.Module, key : bytes) -> None:
+    '''
+    Decrypts model using provided key
+
+    Parameters
+    ----------------
+    model (type: torch.nn.Module)
+    - The model to decrypt
+    key (type: bytes)
+    - The key to decrypt the model
+
+    Returns
+    ----------------
+    None
+    '''
+
+    # Init round key and constant
+    key = bytearray(key)
+    key = [key[i:i + 4] for i in range(0, len(key), 4)]
+    key, round_const = get_key(key)
+
+    # Go through model weights
+    for param in model.parameters():
+        print(".")
+        # Convert parameter tensor to bytes
+        param_bytes = bytearray(param.data.numpy().tobytes())
+
+        # Decrypt 4 floats or doubles at a time
+        for i in range(0, len(param_bytes), len(key) * 4):
+            param_bytes[i:i + len(key) * 4] = xor_bytes(
+                 b''.join(key), 
+                sub_bytes(param_bytes[i:i + len(key) * 4], inverse = True) 
+            )
 
             # Update key
             key, round_const = get_key(key, round_const)
