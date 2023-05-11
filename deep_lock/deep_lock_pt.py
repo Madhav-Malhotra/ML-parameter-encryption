@@ -2,10 +2,11 @@
 
 This script encrypts the parameters of an input Pytorch model.
 
-The following dependencies are required: `torch`, `argparse`, and `struct`. 
+The following dependencies are required: `torch`, `numpy`, `pickle`, `random`, `datetime`, `argparse`, and `struct`. 
 """
 
 import torch
+import pickle
 import random
 import struct
 import argparse
@@ -214,8 +215,8 @@ def encrypt_model(model : torch.nn.Module, key_256 : bool) -> bytes:
     key, round_const = get_key(key)
 
     # Go through model weights
-    for param in model.parameters():
-        print(".")
+    for i, param in enumerate(model.parameters()):
+        if (i % 5 == 0): print(f'Layer {i}')
         # Convert parameter tensor to bytes
         param_bytes = bytearray(param.data.numpy().tobytes())
 
@@ -258,8 +259,8 @@ def decrypt_model(model : torch.nn.Module, key : bytes) -> None:
     key, round_const = get_key(key)
 
     # Go through model weights
-    for param in model.parameters():
-        print(".")
+    for i, param in enumerate(model.parameters()):
+        if (i % 5 == 0): print(f'Layer {i}')
         # Convert parameter tensor to bytes
         param_bytes = bytearray(param.data.numpy().tobytes())
 
@@ -290,27 +291,47 @@ def decrypt_model(model : torch.nn.Module, key : bytes) -> None:
 
 def get_model(model_path : str) -> torch.nn.Module:
     '''
-    Load model, turn off redundant gradients, and move to selected device
+    Load model, turn off redundant gradients.
     '''
 
     model = torch.jit.load(model_path)
     model.train(False)
     return model
 
-def main(args):
+
+def main(args : dict, decryption_mode : bool = False) -> None:
     
     # Set up model and secret key
     print("Fetching model and secret key")
-    model = get_model(args.model, args.device)
+    model = get_model(args.model)
+    master_key = pickle.load(
+        open(args.decryption_key, "rb")) if decryption_mode else None
+
+    # Run decryption
+    if decryption_mode:
+        print("Starting decryption")
+        decrypt_model(model, master_key)
+
+        print("Saving model")
+        out = 'decrypted_model.pt' 
+        if (not args.output_model == 'encrypted_model.pt'):
+            out = args.output_model
+
+        model_scripted = torch.jit.script(model)
+        model_scripted.save(out)
+
+        print("Program successfully finished")
+        return
 
     # Run encryption
     print("Starting encryption")
-    encrypt_model(model, args.key_256)
+    master_key = encrypt_model(model, args.key_256)
 
-    # Save secret and model
-    print("Saving encrypted model")
+    # Save key and model
+    print("Saving encrypted model and key")
     model_scripted = torch.jit.script(model)
     model_scripted.save(args.output_model)
+    pickle.dump(master_key, open(args.output_key, "wb"))
 
     print("Program successfully finished")
 
@@ -322,16 +343,22 @@ if __name__ == '__main__':
     parser.add_argument('model', type=str, 
                         help='Filepath for torchscript model to encrypt/decrypt')
 
-    parser.add_argument('--decrypt-mode', action='store_true', help="Decrypt model with key")
+    parser.add_argument('--decrypt-mode', action='store_true', help="Decrypt model with key. Set --decryption-key alongside.")
     parser.add_argument('--key-256', action='store_true', help="Use 256-bit key, not 128-bit")
 
     parser.add_argument('--output-model',  type=str, default="encrypted_model.pt", 
                         help='Filepath to save model after encryption')
     parser.add_argument('--output-key', type=str, default="decryption_key.pkl", 
                         help='Filepath to save secret key for decryption')
+    parser.add_argument('--decryption-key', type=str, default="decryption_key.pkl", 
+                        help='Filepath to load secret key for decryption. Set --decrypt-mode alongside.')
     
     # load arguments
     args = parser.parse_args()
-    
-    if args.model:
+
+    if not args.decrypt_mode and args.model:
         main(args)
+    elif args.decrypt_mode and args.model and args.decryption_key:
+        main(args, decryption_mode=True)
+    else:
+        print("Please provide a model filepath to encrypt. Or provide a model filepath, set --decrypt_mode, and provide a decryption key filepath to decrypt. Run --help for more details.")
