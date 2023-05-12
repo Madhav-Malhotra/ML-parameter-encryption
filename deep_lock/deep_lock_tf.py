@@ -216,7 +216,7 @@ def encrypt_model(model : tf.Module, key_256 : bool) -> bytes:
     key, round_const = get_key(key)
 
     # Go through model weights
-    for i, param in enumerate(model.variables()):
+    for i, param in enumerate(model.variables):
         if (i % 5 == 0): print(f'Layer {i}')
         # Convert parameter tensor to bytes
         param_bytes = bytearray(param.numpy().tobytes())
@@ -231,7 +231,7 @@ def encrypt_model(model : tf.Module, key_256 : bool) -> bytes:
             key, round_const = get_key(key, round_const)
 
         # Update parameter
-        dtype = np.float32 if param.data.dtype == tf.float32 else np.float64
+        dtype = np.float32 if param.dtype == tf.float32 else np.float64
         param.assign(tf.convert_to_tensor(
             np.frombuffer(param_bytes, dtype=dtype).reshape(param.shape)
         ))
@@ -260,7 +260,7 @@ def decrypt_model(model : tf.Module, key : bytes) -> None:
     key, round_const = get_key(key)
 
     # Go through model weights
-    for i, param in enumerate(model.variables()):
+    for i, param in enumerate(model.variables):
         if (i % 5 == 0): print(f'Layer {i}')
         # Convert parameter tensor to bytes
         param_bytes = bytearray(param.numpy().tobytes())
@@ -276,7 +276,7 @@ def decrypt_model(model : tf.Module, key : bytes) -> None:
             key, round_const = get_key(key, round_const)
 
         # Update parameter
-        dtype = np.float32 if param.data.dtype == tf.float32 else np.float64
+        dtype = np.float32 if param.dtype == tf.float32 else np.float64
         param.assign(tf.convert_to_tensor(
             np.frombuffer(param_bytes, dtype=dtype).reshape(param.shape)
         ))
@@ -337,8 +337,8 @@ def main(args : dict, decryption_mode : bool = False) -> None:
         decrypt_model(model, master_key)
 
         print("Saving model")
-        out = 'decrypted_model.pt' 
-        if (not args.output_model == 'encrypted_model.pt'):
+        out = 'saved_model/decrypted_model' 
+        if (not args.output_model == 'saved_model/encrypted_model'):
             out = args.output_model
         save_model(model, out)
 
