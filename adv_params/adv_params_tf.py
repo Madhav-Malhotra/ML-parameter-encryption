@@ -542,7 +542,7 @@ if __name__ == '__main__':
     parser.add_argument('labels', type=str, 
                         help='Filepath for encryption labels (or location to save decrypted model in decrypt mode)')
     parser.add_argument('model', type=str, 
-                        help='Filepath for tensorflow model to encrypt/decrypt')
+                        help='Filepath for Tensorflow model to encrypt/decrypt')
 
     parser.add_argument('--disable-gpu', action='store_true', help='Disable GPU use')
     parser.add_argument('--json-key', action='store_true', help='Save secret key as JSON')
