@@ -504,13 +504,14 @@ Useful functions to import are:
 - `decrypt_model`: decrypts the above model classes using your secret key. 
 - `print_bytes`: displays your secret key.
 
-Here is some example code **showing how models can be encrypted**. Put this file in the same directory as `adv_params_pt.py`
+Here is some example code **showing how models can be encrypted**. Put this file in the same directory as `deep_lock_pt.py`
 ```python
 import torch 
 import struct
 import random
 import numpy as np
 from datetime import datetime
+from deep_lock_pt import encrypt_model
 
 # init randint generator
 random.seed(datetime.now().timestamp())
@@ -519,7 +520,7 @@ random.seed(datetime.now().timestamp())
 model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2', pretrained=True)
 
 # Encrypt the model
-decryption_key = encrypt_model(model, False)
+decryption_key = encrypt_model(model, key_256=False)
 
 # Save your decryption key and encrypted model parameters at the end.
 torch.save(model, 'encrypted_model.pkl')
@@ -530,7 +531,7 @@ This code snippet shows **how to decrypt models**:
 ```python
 import torch
 import pickle
-from adv_params_pt import decrypt_parameters
+from deep_lock_pt import decrypt_parameters
 
 # Load encrypted data
 model = torch.load(model, 'encrypted_model.pkl')
@@ -556,3 +557,141 @@ torch.save(model, 'decrypted_model.pkl')
 
 
 
+<details><summary><h3>Tensorflow</h3></summary>
+
+This algorithm currently has a Tensorflow implementation for any model derived from the [`tf.Module`](https://www.tensorflow.org/api_docs/python/tf/Module) class. This includes both the [Functional](https://www.tensorflow.org/guide/keras/functional) and [Sequential](https://www.tensorflow.org/api_docs/python/tf/keras/Sequential) API.  
+
+[See this Kaggle notebook for a demo](https://www.kaggle.com/code/madhavmalhotra/tf-fork-of-deeplock-parameter-encryption?scriptVersionId=129415733) of the DeepLock algorithm.
+
+
+
+
+
+
+<details><summary><h3>Script-based Usage</h3></summary>
+
+Download `/deep_lock/deep_lock_tf.py` from this repository into some directory. In that same directory, **save your model** using code like the following: 
+```python
+import tensorflow as tf
+
+# Example pretrained model. Replace with your own model.
+model = tf.keras.applications.mobilenet_v2.MobileNetV2(
+    input_shape=None,
+    alpha=1.0,
+    weights='imagenet',
+    classifier_activation=None) # we want to get back model logits
+model.trainable = True
+
+# Save model
+model.save('saved_model/raw_model')
+```
+
+**To encrypt the model, use the following command**. It specifies that the script should load the model from `saved_model/raw_model`. 
+```bash
+python3 deep_lock_tf.py saved_model/raw_model
+```
+
+As an output, the script will save a secret key necessary to decrypt the model in `decryption_key.pkl`. Also, it will save the encrypted model to `saved_model/encrypted_model`. 
+
+You can **decrypt the model** with this data using the next command. It specifies that the script should get the decryption key and encrypted model from the specified files to decrypt the model. 
+```bash
+python3 deep_lock_tf.py saved_model/encrypted_model --decrypt-mode --decryption-key decryption_key.pkl
+```
+
+To see other script options, run 
+```
+python3 deep_lock_tf.py --help
+
+usage: temp.py [-h] [--decrypt-mode] [--key-256] [--output-model OUTPUT_MODEL] [--output-key OUTPUT_KEY] [--decryption-key DECRYPTION_KEY] model
+
+DEEP LOCK This script encrypts the parameters of an input Pytorch model. The following dependencies are required:
+`os`, `tensorflow`, `numpy`, `pickle`, `random`, `datetime`, `argparse`, and `struct`.
+
+positional arguments:
+  model                 Filepath for Tensorflow model to encrypt/decrypt
+
+options:
+  -h, --help            show this help message and exit
+  --key-256             Use 256-bit key, not 128-bit
+  --output-model OUTPUT_MODEL
+                        Filepath to save model after encryption. 
+                        Must include parent directory and empty subdirectory.
+  --output-key OUTPUT_KEY
+                        Filepath to save secret key for decryption
+
+  --decrypt-mode        Decrypt model with key. 
+                        Set --decryption-key alongside.
+  --decryption-key DECRYPTION_KEY
+                        Filepath to load key for decryption. 
+                        Set --decrypt-mode alongside.
+```
+
+</details>
+
+
+
+
+
+
+
+
+
+
+<details><summary><h3>Module-based Usage</h3></summary>
+
+You can also import the Python script in `deep_lock/deep_lock_tf.py` as a module in your own Python scripts. The following dependencies must be installed: `os`, `tensorflow`, `numpy`, `pickle`, `random`, `datetime`, `argparse`, and `struct`.
+
+Useful functions to import are:
+- `encrypt_model`: encrypts an input `tf.Module` class (or its derivatives). 
+- `decrypt_model`: decrypts the above model classes using your secret key. 
+- `print_bytes`: displays your secret key.
+
+Here is some example code **showing how models can be encrypted**. Put this file in the same directory as `deep_lock_tf.py`
+```python
+import os
+import pickle
+import tensorflow as tf
+from deep_lock_tf import encrypt_model
+
+# Get a tf.Module (or derivative class) however you want
+model = tf.keras.applications.mobilenet_v2.MobileNetV2(
+    input_shape=None,
+    alpha=1.0,
+    weights='imagenet',
+    classifier_activation=None) 
+model.trainable = True
+
+# Encrypt the model
+decryption_key = encrypt_model(model, key_256=False)
+
+# Save your encrypted model parameters
+filepath = 'saved_model/encrypted_model'
+if not os.path.exists(filepath):
+    os.makedirs(filepath)
+model.save(filepath)
+
+# Save your decryption key
+pickle.dump(decryption_key, open('decrpytion_key.pkl', 'wb'))
+```
+
+This code snippet shows **how to decrypt models**:
+```python
+import pickle
+import tensorflow as tf
+from deep_lock_tf import decrypt_parameters
+
+# Load encrypted data
+device = 'cpu'
+with tf.device(device):
+        model = tf.keras.models.load_model('saved_model/encrypted_model')
+        model.trainable = True
+secret = pickle.load('decryption_key.pkl')
+
+# Decrypt parameters and save model
+decrypt_parameters(model, secret)
+model.save('saved_model/decrypted_model')
+```
+
+</details>
+
+</details>
