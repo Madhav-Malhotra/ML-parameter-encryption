@@ -114,7 +114,10 @@ class ShuffleTransform():
         num_blocks = math.ceil(raw.shape[-1] / self.block_size) * \
             math.ceil(raw.shape[-2] / self.block_size)
         num_channels = raw.shape[1] if batched else raw.shape[0]
+        
         blocks = torch.zeros(batch_dim, num_blocks, self.block_size**2 * num_channels)
+        blocks = blocks.to(raw.device)
+
 
         # Number batches and blocks
         for batch in range(batch_dim):
