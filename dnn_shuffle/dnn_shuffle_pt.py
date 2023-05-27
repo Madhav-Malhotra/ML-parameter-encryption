@@ -27,12 +27,13 @@ class ShuffleTransform():
     
     def __call__(self, img: torch.Tensor) -> torch.Tensor:
         
-        # Init random seed
+        # Setup seed and batch dim
         self.gen_seed(img)
+        batched = (len(img.shape) == 4)
 
         # Shuffle tensor using seeded random number generator
-        block = self.tensor_to_blocks(img)
-        shuffled = self.shuffle_block(block)
+        block = self.tensor_to_blocks(img, batched)
+        shuffled = self.shuffle_block(block, batched)
 
         return torch.reshape(shuffled, img.shape)
     
@@ -87,7 +88,7 @@ class ShuffleTransform():
 
         self.seed = seed
 
-    def tensor_to_blocks(self, raw: torch.Tensor) -> torch.Tensor:
+    def tensor_to_blocks(self, raw: torch.Tensor, batched : bool) -> torch.Tensor:
         '''
         Divides tensor into blocks of size block_size
         
@@ -95,6 +96,8 @@ class ShuffleTransform():
         -----------------
         raw (type: torch.Tensor, dim: batch_size x num_channels x height x width) 
             tensor to divide into blocks
+        batched (type: bool)
+        - Whether the input has a batch dimension at the start. 
 
         Returns:
         -----------------
@@ -102,41 +105,52 @@ class ShuffleTransform():
             Contains raw values, divided into blacks
         '''
 
-        assert(len(raw.shape) == 4)
+        assert(len(raw.shape) == 4 or len(raw.shape) == 3)
+        # Adjust for batched versus non batched input
+        batch_dim = raw.shape[0] if batched else 1
         
         # For every block_size x block_size square in height x width
         # select and flatten values in all channels in that block
         num_blocks = math.ceil(raw.shape[-1] / self.block_size) * \
             math.ceil(raw.shape[-2] / self.block_size)
-        blocks = torch.zeros(raw.shape[0], num_blocks, self.block_size**2 * raw.shape[1])
+        num_channels = raw.shape[1] if batched else raw.shape[0]
+        blocks = torch.zeros(batch_dim, num_blocks, self.block_size**2 * num_channels)
 
         # Number batches and blocks
-        for batch in range(raw.shape[0]):
+        for batch in range(batch_dim):
             for block in range(num_blocks):
+                
                 # Step through each block in height and width dimensions 
                 for h_step in range(0, raw.shape[-2], self.block_size):
                     for w_step in range(0, raw.shape[-1], self.block_size):
+                        
                         # Save flattened block
-                        blocks[batch, block] = torch.flatten(
-                            raw[batch, :, h_step : h_step + self.block_size, 
-                                w_step : w_step + self.block_size]
-                        )
+                        if batched:
+                            highdim = raw[batch, :, h_step : h_step + self.block_size, 
+                                    w_step : w_step + self.block_size]
+                        else: 
+                            highdim = raw[:, h_step : h_step + self.block_size, 
+                                    w_step : w_step + self.block_size]
+                            
+                        blocks[batch, block] = torch.flatten(highdim)
         
         return blocks
 
-    def shuffle_block(self, raw : torch.Tensor) -> torch.Tensor:
+    def shuffle_block(self, raw : torch.Tensor, batched : bool) -> torch.Tensor:
         '''
         Randomly shuffles each block in the input tensor. 
 
         Parameters:
         -----------------
         raw (type: torch.Tensor, dim: batch_size x num_blocks x (block_size^2 x num_channels))
-            Tensor
+            Tensor split into blocks.
+        batched (type: bool)
+        - Whether the input has a batch dimension at the start. 
 
         Returns:
         -----------------
         shuffled (type: torch.Tensor, dim: batch_size x num_blocks x (block_size^2 x num_channels))
-            Shuffled tensor
+            Shuffled tensor. 
         '''
 
         # Setup random number generator
@@ -148,5 +162,8 @@ class ShuffleTransform():
                 # Shuffle each block
                 idx = torch.randperm(raw.size(-1), generator=rng)
                 raw[batch, block] = raw[batch, block][idx]
+                
+        if raw.size(0) == 1:
+            raw = torch.squeeze(raw, 0)
                 
         return raw
