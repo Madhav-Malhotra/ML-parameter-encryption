@@ -695,3 +695,113 @@ model.save('saved_model/decrypted_model')
 </details>
 
 </details>
+
+
+
+
+
+
+
+
+
+
+
+
+--------------------
+
+
+
+
+
+
+
+
+
+
+
+
+## DNN Shuffle
+
+<details><summary><h3>Pytorch</h3></summary>
+
+This algorithm can be used with any tensor that represents spatial image data. [See this Kaggle notebook for a demo](https://www.tensorflow.org/api_docs/python/tf/squeeze) of the DNN shuffle algorithm.
+
+Start by importing the Python module in `dnn_shuffle/dnn_shuffle_pt.py` as a module in your own Python scripts. The following dependencies must be installed: `torch`, `cryptography`, `hashlib`, `os`, `math`.
+
+Useful objects to import are:
+- `ShuffleTransform`: a `torchvision.transforms` class that shuffles images.
+
+Here is some example code **showing how to use the transforms class**. Put this file in the same directory as `dnn_shuffle_pt.py`
+```python
+import os
+import torch 
+from PIL import Image
+from torchvision import transforms
+from dnn_shuffle_pt import ShuffleTransform
+
+# Specify kernel size for images and secret key
+block_size = 8
+master_key = bytearray(os.urandom(32))
+
+# Initialise transforms
+shuffle_transform = ShuffleTransform(block_size, master_key)
+
+convert_img = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    shuffle_transform
+])
+
+# Process data (input can also be batched)
+img = Image.open('YOUR_IMAGE_HERE.jpg')
+img = convert_img(img)
+```
+
+This algorithm is intended for use in preprocessing all data before model training. See the [research paper](https://ieeexplore.ieee.org/document/9291813) for more details.
+
+</details>
+
+
+
+
+
+
+
+
+
+
+
+<details><summary><h3>Tensorflow</h3></summary>
+
+This algorithm can be used with any tensor that represents spatial image data. Its purpose is to preprocess all data before model training. See the [research paper](https://ieeexplore.ieee.org/document/9291813) for more details.
+
+Start by importing the Python module in `dnn_shuffle/dnn_shuffle_tf.py` as a module in your own Python scripts. The following dependencies must be installed: `tensorflow`, `cryptography`, `hashlib`, `os`, `math`.
+
+Useful functions to import are:
+- `shuffle_transform`: a function which shuffles input tensors representing images. 
+- `gen_key`: a function which generates a secret key for the shuffle transform.- 
+
+Here is some example code **showing how to preprocess input data**. Put this file in the same directory as `dnn_shuffle_tf.py`
+```python
+import os
+from PIL import Image
+import tensorflow as tf
+from torchvision import transforms
+from deep_lock_pt import encrypt_model
+
+# Load some image tensor
+image = Image.open(image_path)
+image = tf.image.resize(image, size=(256, 256))  
+image = tf.convert_to_tensor(image)
+
+# Initialise shuffling function
+block_size = 8
+master_key = gen_key()
+
+# Shuffle image data (input can also be batched)
+image = shuffle_transform(image, block_size, master_key)
+```
+
+</details>
