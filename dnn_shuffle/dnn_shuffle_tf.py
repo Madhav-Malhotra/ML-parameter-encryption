@@ -28,7 +28,7 @@ def shuffle_transform(img : tf.Tensor, block_size : int, key) -> tf.Tensor:
 
     # Shuffle tensor using seeded random number generator
     block = tensor_to_blocks(img, batched, block_size)
-    shuffled = shuffle_block(block, batched, seed)
+    shuffled = shuffle_block(block, seed)
 
     return tf.reshape(shuffled, img.shape)
     
@@ -142,7 +142,7 @@ def tensor_to_blocks(raw: tf.Tensor, batched : bool, block_size : int) -> tf.Ten
     
     return blocks
 
-def shuffle_block(raw : tf.Tensor, batched : bool, seed : int) -> tf.Tensor:
+def shuffle_block(raw : tf.Tensor, seed : int) -> tf.Tensor:
     '''
     Randomly shuffles each block in the input tensor. 
 
@@ -150,8 +150,6 @@ def shuffle_block(raw : tf.Tensor, batched : bool, seed : int) -> tf.Tensor:
     -----------------
     raw (type: tf.Tensor, dim: batch_size x num_blocks x (block_size^2 x num_channels))
         Tensor split into blocks.
-    batched (type: bool)
-        Whether the input has a batch dimension at the start. 
     seed (type: int)
         Seed for random number generator
 
