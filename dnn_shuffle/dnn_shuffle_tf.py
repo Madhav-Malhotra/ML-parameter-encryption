@@ -142,13 +142,13 @@ def tensor_to_blocks(raw: tf.Tensor, batched : bool, block_size : int) -> tf.Ten
     
     return blocks
 
-def shuffle_block(raw : torch.Tensor, batched : bool, seed : int) -> torch.Tensor:
+def shuffle_block(raw : tf.Tensor, batched : bool, seed : int) -> tf.Tensor:
     '''
     Randomly shuffles each block in the input tensor. 
 
     Parameters:
     -----------------
-    raw (type: torch.Tensor, dim: batch_size x num_blocks x (block_size^2 x num_channels))
+    raw (type: tf.Tensor, dim: batch_size x num_blocks x (block_size^2 x num_channels))
         Tensor split into blocks.
     batched (type: bool)
         Whether the input has a batch dimension at the start. 
@@ -157,21 +157,18 @@ def shuffle_block(raw : torch.Tensor, batched : bool, seed : int) -> torch.Tenso
 
     Returns:
     -----------------
-    shuffled (type: torch.Tensor, dim: batch_size x num_blocks x (block_size^2 x num_channels))
+    shuffled (type: tf.Tensor, dim: batch_size x num_blocks x (block_size^2 x num_channels))
         Shuffled tensor. 
     '''
-
-    # Setup random number generator
-    rng = torch.Generator()
-    rng.manual_seed(seed)
 
     for batch in range(raw.shape[0]):
         for block in range(raw.shape[1]):
             # Shuffle each block
-            idx = torch.randperm((raw.shape[-1]), generator=rng)
-            raw[batch, block] = raw[batch, block][idx]
+            raw[batch, block, :] = tf.random.shuffle(
+                tf.flatten(raw[batch, block, :]), seed=seed
+            )
             
     if raw.shape[0] == 1:
-        raw = torch.squeeze(raw, 0)
+        raw = tf.squeeze(raw, axis=0)
             
     return raw
